@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>つくってみる｜文章表現</title>
+
+<script>
+/* ======================================================================
+   ★ 先生へ：ここだけ書き換えてください
+   ----------------------------------------------------------------------
+   【推奨】proxyUrl に、Cloudflare Worker のURLを貼ります。
+           キーはWorker側に置くので、このページのどこにも出てきません。
+
+   【非推奨】proxyUrl が空のときだけ apiKey が使われます。
+             この場合キーはページを見れば分かります。動作確認用です。
+
+   どちらも空なら、ページは「コードを貼る」機能だけで動きます。
+   ====================================================================== */
+window.SETUP = {
+  proxyUrl: "",   // 例: "https://tsukutte.〇〇〇.workers.dev"
+
+  apiKey: "",     // 中継役を使わないときだけ（キーが見えます）
+  model:  ""      // 空なら自動で選びます
+};
+</script>
+
+<style>
+  :root{
+    --ink:#14110f; --paper:#faf8f5; --line:#ddd6cc; --accent:#7a2e2e;
+    --muted:#6b635b; --ok:#2f5d3a;
+    color-scheme: light;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",YuGothic,"Meiryo",sans-serif;
+    background:var(--paper); color:var(--ink);
+    font-size:16px; line-height:1.6;
+    padding: env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0);
+    -webkit-text-size-adjust:100%;
+  }
+  .wrap{max-width:900px;margin:0 auto;padding:18px 16px 60px}
+
+  header{border-bottom:3px solid var(--ink);padding-bottom:10px;margin-bottom:16px}
+  h1{font-size:1.4rem;margin:0;letter-spacing:.08em}
+  header p{margin:4px 0 0;font-size:.85rem;color:var(--muted)}
+
+  .say{border:2px solid var(--ink);border-radius:10px;padding:15px 16px;background:#fff;margin-bottom:14px}
+  .say h2{margin:0 0 4px;font-size:1.05rem;letter-spacing:.04em}
+  .say p.note{margin:0 0 10px;font-size:.87rem;color:#555}
+
+  textarea{
+    width:100%;font-size:16px;line-height:1.55;font-family:inherit;
+    border:1px solid var(--line);border-radius:8px;padding:12px;background:#fff;color:var(--ink);
+    resize:vertical;
+  }
+  textarea:focus{outline:2px solid var(--accent);outline-offset:1px}
+  #ask{min-height:110px}
+  #code{min-height:150px;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:15px}
+
+  .bar{display:flex;gap:9px;margin-top:11px;flex-wrap:wrap}
+  button{font-family:inherit;cursor:pointer}
+  .go{
+    flex:1 1 auto;background:var(--ink);color:#fff;border:none;border-radius:8px;
+    padding:15px 18px;font-size:1rem;font-weight:700;letter-spacing:.12em;
+  }
+  .go:active{background:var(--accent)}
+  .go:disabled{background:#b5ada3}
+  .sub{
+    background:#fff;border:1px solid var(--line);border-radius:8px;
+    padding:15px 16px;font-size:.88rem;color:var(--muted);
+  }
+
+  .status{margin-top:10px;font-size:.88rem;min-height:1.4em}
+  .status.work{color:var(--accent)}
+  .status.ok{color:var(--ok)}
+  .status.err{color:#8c2020}
+
+  .stage{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff;margin-top:6px}
+  .stage-head{
+    display:flex;justify-content:space-between;align-items:center;gap:8px;
+    padding:8px 12px;border-bottom:1px solid var(--line);font-size:.8rem;color:var(--muted);
+  }
+  .stage-head button{
+    background:none;border:1px solid var(--line);border-radius:5px;
+    padding:5px 11px;font-size:.78rem;color:var(--ink);
+  }
+  iframe{width:100%;height:430px;border:0;display:block;background:#fff}
+
+  body.zen .wrap > *:not(.stage){display:none}
+  body.zen .wrap{max-width:none;padding:0}
+  body.zen iframe{height:calc(100vh - 42px)}
+
+  details{background:#fff;border:1px solid var(--line);border-radius:8px;margin-top:14px}
+  summary{padding:13px 15px;font-weight:600;font-size:.94rem;cursor:pointer}
+  .inner{padding:0 15px 15px}
+
+  ol.hist{margin:6px 0 0;padding-left:1.4em;font-size:.88rem}
+  ol.hist li{margin-bottom:7px;white-space:pre-wrap}
+  ol.hist li em{font-style:normal;color:var(--muted);font-size:.85em;display:block}
+
+  .trouble{margin:0;padding:0;list-style:none}
+  .trouble li{border-top:1px solid var(--line);padding:11px 0;font-size:.88rem}
+  .trouble b{display:block;color:var(--accent);margin-bottom:2px}
+  .trouble code{background:var(--paper);border:1px solid var(--line);border-radius:4px;padding:1px 6px;font-size:.85em}
+
+  .card{border:1px solid var(--line);border-radius:7px;padding:12px;margin-top:10px;background:var(--paper)}
+  .card h3{margin:0 0 6px;font-size:.87rem;color:var(--accent)}
+  .card p{margin:0 0 9px;font-size:.85rem;white-space:pre-wrap}
+  .use{border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:6px;padding:7px 14px;font-size:.83rem}
+  .use:active{background:var(--ink);color:#fff}
+
+  .hint{font-size:.81rem;color:var(--muted);margin:15px 0 0;padding-left:1em;text-indent:-1em}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>つくってみる</h1>
+    <p>文章表現／言葉で頼むと、動くものができます</p>
+  </header>
+
+  <!-- ===== 頼む ===== -->
+  <section class="say" id="askbox">
+    <h2>何をつくりますか</h2>
+    <p class="note">
+      作りたいものを、<strong>自分の言葉で</strong>書いてください。<br>
+      うまくいかなくてかまいません。というより、たぶんうまくいきません。それでいいです。
+    </p>
+    <textarea id="ask" placeholder="例：ボタンを押すと短い話が出てくるページ。&#10;（どんなふうに、何が、どう出るのか。書けば書くほど近づきます）"></textarea>
+    <div class="bar">
+      <button class="go" id="make">つ く っ て も ら う</button>
+      <button class="sub" id="reset">最初から</button>
+    </div>
+    <div class="status" id="status"></div>
+  </section>
+
+  <!-- ===== プレビュー ===== -->
+  <div class="stage" id="stage">
+    <div class="stage-head">
+      <span>できたもの</span>
+      <button id="zen">全画面</button>
+    </div>
+    <iframe id="view" sandbox="allow-scripts allow-modals" title="プレビュー"></iframe>
+  </div>
+
+  <!-- ===== 直す ===== -->
+  <section class="say" id="fixbox" hidden>
+    <h2>直したいところ</h2>
+    <p class="note">
+      <strong>どこが、どうなっていてほしいのか。</strong>
+      「もうちょっといい感じに」では何も変わりません。
+    </p>
+    <textarea id="fix" placeholder="例：文字が小さくて読みにくいので大きくして。背景は夜みたいな色に。"></textarea>
+    <div class="bar">
+      <button class="go" id="redo">直 し て も ら う</button>
+    </div>
+  </section>
+
+  <!-- ===== 履歴 ===== -->
+  <details id="histbox" hidden>
+    <summary>これまでの頼みごと</summary>
+    <div class="inner">
+      <p style="font-size:.85rem;color:var(--muted);margin:4px 0 0">
+        自分の言葉がどう変わっていったか。授業の終わりに見返します。</p>
+      <ol class="hist" id="hist"></ol>
+    </div>
+  </details>
+
+  <!-- ===== コードを貼る ===== -->
+  <details id="pastebox">
+    <summary>自分でAIに頼んだ人はこちら（コードを貼る）</summary>
+    <div class="inner">
+      <p style="font-size:.85rem;color:var(--muted);margin:4px 0 8px">
+        Copilot などで作ったコードを貼って、［動かす］を押してください。<br>
+        頼むときに<strong>「HTMLとCSSとJavaScriptを1つのファイルにまとめて」</strong>と付けると、まとめて出てきます。</p>
+      <textarea id="code" placeholder="&lt;!doctype html&gt; から始まるコードを貼りつけてください。" spellcheck="false" autocapitalize="off" autocorrect="off"></textarea>
+      <div class="bar"><button class="go" id="run">動 か す</button></div>
+    </div>
+  </details>
+
+  <!-- ===== うまくいかないとき ===== -->
+  <details>
+    <summary>うまくいかないとき</summary>
+    <div class="inner">
+      <ul class="trouble">
+        <li><b>動くけれど、思っていたのと違う</b>
+          ここからが本番です。どこがどう違うのかを、具体的に言葉にしてください。それが今日の授業です。</li>
+        <li><b>「混んでいます」と出て止まる</b>
+          みんなが一斉に頼むと順番待ちになります。そのまま待てば動きます。</li>
+        <li><b>まっ白になった</b>
+          「まっ白になった」とそのまま伝えて直してもらってください。</li>
+        <li><b>貼っても何も出ない</b>
+          <code>&lt;!doctype html&gt;</code> から始まっていますか。途中から貼れていないか確認を。</li>
+        <li><b>コードが途中で切れている</b>
+          「続きを書いて」と頼んでください。</li>
+      </ul>
+    </div>
+  </details>
+
+  <!-- ===== お題 ===== -->
+  <details>
+    <summary>手が止まったら（お題の例）</summary>
+    <div class="inner">
+      <p style="font-size:.85rem;color:var(--muted);margin:4px 0 0">
+        思いつかないときだけ。使わないほうが面白いものができます。</p>
+      <div class="card">
+        <h3>おみくじ</h3>
+        <p>ボタンを押すと、10個の短い文章の中から1つがランダムに出てくるページ。文章は考えて入れてください。</p>
+        <button class="use">これで頼む</button>
+      </div>
+      <div class="card">
+        <h3>診断</h3>
+        <p>3つの質問に答えると、4種類のうち1つの結果が出る診断ページ。質問と結果は考えて入れてください。</p>
+        <button class="use">これで頼む</button>
+      </div>
+      <div class="card">
+        <h3>降ってくる詩</h3>
+        <p>画面をタップするたびに、詩が一行ずつ下に増えていくページ。詩は考えて入れてください。</p>
+        <button class="use">これで頼む</button>
+      </div>
+    </div>
+  </details>
+
+  <p class="hint">※ 作ったものは公開されません。自分の端末の中だけにあります。</p>
+  <p class="hint">※ 書きかけは自動で残ります。タブを閉じても大丈夫です。</p>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var KEY_DRAFT='bh-draft', KEY_CODE='bh-code', KEY_HIST='bh-hist';
+  var $=function(id){return document.getElementById(id);};
+  var ask=$('ask'), fix=$('fix'), code=$('code'), view=$('view'),
+      statusEl=$('status'), stage=$('stage'), histEl=$('hist');
+  var current='';            // いま表示しているHTML
+  var history=[];            // 頼みごとの履歴
+  var busy=false;
+  var MODEL=null;
+
+  /* ---------- 保存 ---------- */
+  function store(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+  function load(k){ try{ return localStorage.getItem(k)||''; }catch(e){ return ''; } }
+
+  try{
+    ask.value = load(KEY_DRAFT);
+    var c = load(KEY_CODE);
+    if (c){ current=c; code.value=c; render(c); }
+    var h = load(KEY_HIST);
+    if (h){ history = JSON.parse(h); drawHist(); }
+  }catch(e){}
+
+  /* ---------- 表示 ---------- */
+  function render(html){
+    view.srcdoc = html;
+    current = html;
+    store(KEY_CODE, html);
+    $('fixbox').hidden = false;
+    if(!document.body.classList.contains('zen')){
+      stage.scrollIntoView({behavior:'smooth', block:'start'});
+    }
+  }
+  function say(msg, cls){
+    statusEl.textContent = msg || '';
+    statusEl.className = 'status' + (cls ? ' '+cls : '');
+  }
+  function drawHist(){
+    if(!history.length){ return; }
+    $('histbox').hidden = false;
+    histEl.innerHTML = '';
+    history.forEach(function(h){
+      var li=document.createElement('li');
+      li.textContent = h.text;
+      var em=document.createElement('em');
+      em.textContent = h.kind==='fix' ? '（直し）' : '（最初の頼みごと）';
+      li.appendChild(em);
+      histEl.appendChild(li);
+    });
+  }
+  function remember(text, kind){
+    history.push({text:text, kind:kind});
+    store(KEY_HIST, JSON.stringify(history));
+    drawHist();
+  }
+
+  /* ---------- AI ---------- */
+  var SYS = [
+    'あなたは高校生がWebページを作るのを手伝います。',
+    '出力は、単独で動く1つのHTMLファイルのコードだけにしてください。',
+    '説明文、前置き、マークダウンの記号（```）は一切つけないこと。',
+    '<!doctype html> から始め、CSSは<style>、JavaScriptは<script>として同じファイルに含めること。',
+    '外部のファイルやライブラリは読み込まないこと。画像が必要なら絵文字や図形で代用すること。',
+    '表示される文言は日本語にすること。',
+    'スマートフォンやタブレットの画面でも読めるよう、文字は十分な大きさにすること。',
+    '指示があいまいな部分は、勝手に質問せず、自然な形で補って作ること。'
+  ].join('\n');
+
+  function strip(t){
+    t = String(t||'').trim();
+    t = t.replace(/^```[a-zA-Z]*\s*/,'').replace(/```\s*$/,'');
+    var i = t.toLowerCase().indexOf('<!doctype');
+    if (i < 0) i = t.toLowerCase().indexOf('<html');
+    if (i > 0) t = t.slice(i);
+    return t.trim();
+  }
+
+  function sleep(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
+
+  function pickModel(list){
+    var ok = list.filter(function(m){
+      var n=(m.name||'').replace('models/','');
+      var meth=m.supportedGenerationMethods||m.supportedActions||[];
+      if (meth.indexOf('generateContent') < 0) return false;
+      if (/embed|aqa|vision|image|tts|audio|video|live|learnlm/i.test(n)) return false;
+      return true;
+    }).map(function(m){ return m.name.replace('models/',''); });
+
+    var order = [/flash-lite/i, /flash/i, /./];
+    for (var i=0;i<order.length;i++){
+      var hit = ok.filter(function(n){ return order[i].test(n) && !/preview|exp/i.test(n); });
+      if (hit.length) return hit[0];
+      hit = ok.filter(function(n){ return order[i].test(n); });
+      if (hit.length) return hit[0];
+    }
+    return null;
+  }
+
+  async function ensureModel(key){
+    if (MODEL) return MODEL;
+    if (window.SETUP.model){ MODEL = window.SETUP.model; return MODEL; }
+    var r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key='+encodeURIComponent(key));
+    if (!r.ok) throw new Error('モデル一覧を取得できませんでした');
+    var j = await r.json();
+    MODEL = pickModel(j.models||[]);
+    if (!MODEL) throw new Error('使えるモデルが見つかりませんでした');
+    return MODEL;
+  }
+
+  async function once(userText){
+    var proxy = (window.SETUP.proxyUrl||'').trim().replace(/\/$/,'');
+
+    if (proxy){
+      var pr = await fetch(proxy, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ user:userText })
+      });
+      var pj = null;
+      try { pj = await pr.json(); } catch(e){}
+      if (pr.ok && pj && pj.text) return { done:true, html:strip(pj.text) };
+      if (pr.status===429 || pr.status>=500 || (pj && pj.error==='BUSY')) return { retry:true };
+      throw new Error((pj && pj.error) || ('うまくいきませんでした（'+pr.status+'）'));
+    }
+
+    var key = (window.SETUP.apiKey||'').trim();
+    if (!key) throw new Error('NOKEY');
+
+    var model = await ensureModel(key);
+    var res = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent?key='+encodeURIComponent(key),
+      { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          systemInstruction:{ parts:[{text:SYS}] },
+          contents:[{ role:'user', parts:[{text:userText}] }],
+          generationConfig:{ temperature:0.9, maxOutputTokens:8192 }
+        }) }
+    );
+    if (res.ok){
+      var data = await res.json();
+      var parts = (((data.candidates||[])[0]||{}).content||{}).parts||[];
+      var text = parts.map(function(p){ return p.text||''; }).join('');
+      if (!text) throw new Error('返事が空でした。もう一度押してみてください。');
+      return { done:true, html:strip(text) };
+    }
+    if (res.status===429 || res.status>=500) return { retry:true };
+    var msg = await res.text();
+    if (res.status===400 && /API key/i.test(msg)) throw new Error('APIキーが正しくないようです。先生に伝えてください。');
+    throw new Error('うまくいきませんでした（'+res.status+'）');
+  }
+
+  async function callAI(userText){
+    for (var attempt=0; attempt<6; attempt++){
+      if (attempt) say('混んでいます。順番待ちです…（'+attempt+'回目）','work');
+      var r = await once(userText);
+      if (r.done) return r.html;
+      await sleep(2500 + attempt*2500 + Math.random()*1500);
+    }
+    throw new Error('混み合っています。少し待ってから、もう一度押してください。');
+  }
+
+  async function go(prompt, kind){
+    if (busy) return;
+    var text = prompt.trim();
+    if (!text){ say('何をつくりたいか、書いてください。','err'); return; }
+
+    busy = true;
+    $('make').disabled = true; $('redo').disabled = true;
+    say(kind==='fix' ? '直しています…' : 'つくっています…','work');
+
+    var sent = (kind==='fix')
+      ? '次のHTMLを、後の指示のとおりに直してください。直した後の完全なHTMLだけを出力してください。\n\n----- いまのHTML -----\n'
+        + current + '\n\n----- 直してほしいこと -----\n' + text
+      : text;
+
+    try{
+      var html = await callAI(sent);
+      render(html);
+      code.value = html;
+      remember(text, kind);
+      if (kind==='fix'){ fix.value=''; } else { ask.value=text; store(KEY_DRAFT,text); }
+      say('できました。','ok');
+    }catch(e){
+      if (e.message==='NOKEY'){
+        say('このページではAIを直接呼べません。下の「コードを貼る」を使ってください。','err');
+        $('pastebox').open = true;
+        $('pastebox').scrollIntoView({behavior:'smooth'});
+      } else {
+        say(e.message,'err');
+      }
+    }
+    busy = false;
+    $('make').disabled = false; $('redo').disabled = false;
+  }
+
+  /* ---------- 操作 ---------- */
+  $('make').addEventListener('click', function(){ go(ask.value,'new'); });
+  $('redo').addEventListener('click', function(){ go(fix.value,'fix'); });
+
+  ask.addEventListener('input', function(){ store(KEY_DRAFT, ask.value); });
+
+  $('run').addEventListener('click', function(){
+    var v = code.value.trim();
+    if (!v){ return; }
+    render(v);
+  });
+  code.addEventListener('input', function(){ store(KEY_CODE, code.value); });
+
+  $('reset').addEventListener('click', function(){
+    if (!confirm('いままで作ったものを消して、最初からやり直しますか。')) return;
+    ask.value=''; fix.value=''; code.value=''; current='';
+    view.srcdoc=''; history=[]; histEl.innerHTML='';
+    $('histbox').hidden = true; $('fixbox').hidden = true;
+    store(KEY_DRAFT,''); store(KEY_CODE,''); store(KEY_HIST,'[]');
+    say('');
+    ask.focus();
+  });
+
+  $('zen').addEventListener('click', function(){
+    document.body.classList.toggle('zen');
+    this.textContent = document.body.classList.contains('zen') ? 'もどる' : '全画面';
+    window.scrollTo(0,0);
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll('.use'), function(btn){
+    btn.addEventListener('click', function(){
+      ask.value = btn.previousElementSibling.textContent.trim();
+      store(KEY_DRAFT, ask.value);
+      ask.scrollIntoView({behavior:'smooth', block:'center'});
+      ask.focus();
+    });
+  });
+
+  /* キーが無ければ、頼む欄の案内を差し替える */
+  if (!(window.SETUP.proxyUrl||'').trim() && !(window.SETUP.apiKey||'').trim()){
+    $('askbox').querySelector('.note').innerHTML =
+      'このページではAIを直接呼べない設定です。<br>下の<strong>「コードを貼る」</strong>から進んでください。';
+    $('make').textContent = 'コードを貼るへ';
+    $('pastebox').open = true;
+  }
+})();
+</script>
+</body>
+</html>
