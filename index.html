@@ -9,19 +9,23 @@
 /* ======================================================================
    ★ 先生へ：ここだけ書き換えてください
    ----------------------------------------------------------------------
-   【推奨】proxyUrl に、Cloudflare Worker のURLを貼ります。
-           キーはWorker側に置くので、このページのどこにも出てきません。
+   proxyUrl … Cloudflare Worker のURL。キーはWorker側にあるので、
+              このページのどこにも出てきません。
 
-   【非推奨】proxyUrl が空のときだけ apiKey が使われます。
-             この場合キーはページを見れば分かります。動作確認用です。
-
-   どちらも空なら、ページは「コードを貼る」機能だけで動きます。
+   LIMITS   … 使いすぎの予防。数字は自由に変えられます。
+              perDay    … 1人が1日に作れる回数
+              cooldown  … 1回作ったあと、次に押せるまでの秒数
+              perMinute … 直近1分で作れる回数
    ====================================================================== */
 window.SETUP = {
-  proxyUrl: "https://tsukutte.ryousukey0113.workers.dev",   // 例: "https://tsukutte.〇〇〇.workers.dev"
-
-  apiKey: "",     // 中継役を使わないときだけ（キーが見えます）
-  model:  ""      // 空なら自動で選びます
+  proxyUrl: "",   // 例: "https://tsukutte.〇〇〇.workers.dev"
+  apiKey:   "",   // 中継役を使わないときだけ（キーが見えます）
+  model:    ""
+};
+window.LIMITS = {
+  perDay:    35,   // 1人が1日に作れる回数（10人 × 35 ＝ 350。lite の1日500回に収まる）
+  cooldown:  10,   // 1回作ったあと、次に押せるまでの秒数
+  perMinute:  3    // 直近1分で作れる回数
 };
 </script>
 
@@ -47,8 +51,14 @@ window.SETUP = {
   header p{margin:4px 0 0;font-size:.85rem;color:var(--muted)}
 
   .say{border:2px solid var(--ink);border-radius:10px;padding:15px 16px;background:#fff;margin-bottom:14px}
-  .say h2{margin:0 0 4px;font-size:1.05rem;letter-spacing:.04em}
-  .say p.note{margin:0 0 10px;font-size:.87rem;color:#555}
+  .say h2{margin:0 0 6px;font-size:1.05rem;letter-spacing:.04em}
+  .say p.note{margin:0 0 9px;font-size:.87rem;color:#444}
+
+  .four{
+    margin:0 0 10px;padding:9px 12px;background:var(--paper);
+    border:1px solid var(--line);border-radius:7px;font-size:.85rem;line-height:1.75;
+  }
+  .four b{color:var(--accent)}
 
   textarea{
     width:100%;font-size:16px;line-height:1.55;font-family:inherit;
@@ -56,8 +66,10 @@ window.SETUP = {
     resize:vertical;
   }
   textarea:focus{outline:2px solid var(--accent);outline-offset:1px}
-  #ask{min-height:110px}
+  #ask{min-height:150px}
+  #fix{min-height:90px}
   #code{min-height:150px;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:15px}
+  textarea::placeholder{color:#a9a29a}
 
   .bar{display:flex;gap:9px;margin-top:11px;flex-wrap:wrap}
   button{font-family:inherit;cursor:pointer}
@@ -66,16 +78,38 @@ window.SETUP = {
     padding:15px 18px;font-size:1rem;font-weight:700;letter-spacing:.12em;
   }
   .go:active{background:var(--accent)}
-  .go:disabled{background:#b5ada3}
+  .go:disabled{background:#b5ada3;cursor:default}
   .sub{
     background:#fff;border:1px solid var(--line);border-radius:8px;
     padding:15px 16px;font-size:.88rem;color:var(--muted);
   }
 
-  .status{margin-top:10px;font-size:.88rem;min-height:1.4em}
-  .status.work{color:var(--accent)}
+  /* ---- 進行表示 ---- */
+  .prog{margin-top:12px;display:none}
+  .prog.on{display:block}
+  .track{height:7px;background:#e7e1d8;border-radius:4px;overflow:hidden}
+  .fill{
+    height:100%;width:38%;border-radius:4px;
+    background:linear-gradient(90deg,var(--accent),#c06a4a,var(--accent));
+    animation:slide 1.5s ease-in-out infinite;
+  }
+  @keyframes slide{
+    0%{transform:translateX(-100%)}
+    100%{transform:translateX(320%)}
+  }
+  .prog .line{
+    display:flex;justify-content:space-between;align-items:baseline;
+    margin-top:7px;font-size:.87rem;color:var(--accent);
+  }
+  .prog .sec{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.82rem}
+
+  .status{margin-top:10px;font-size:.88rem;min-height:1.3em}
   .status.ok{color:var(--ok)}
   .status.err{color:#8c2020}
+
+  .left{margin-top:9px;font-size:.82rem;color:var(--muted)}
+  .left b{color:var(--ink)}
+  .left.low b{color:#8c2020}
 
   .stage{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff;margin-top:6px}
   .stage-head{
@@ -91,6 +125,21 @@ window.SETUP = {
   body.zen .wrap > *:not(.stage){display:none}
   body.zen .wrap{max-width:none;padding:0}
   body.zen iframe{height:calc(100vh - 42px)}
+
+  /* ---- 提出 ---- */
+  .hand{
+    border:2px solid var(--accent);border-radius:10px;padding:14px 16px;
+    background:#fff;margin-top:14px;
+  }
+  .hand h2{margin:0 0 4px;font-size:1rem;color:var(--accent);letter-spacing:.04em}
+  .hand p{margin:0 0 10px;font-size:.86rem;color:#444}
+  .hand button{
+    width:100%;background:var(--accent);color:#fff;border:none;border-radius:8px;
+    padding:14px 18px;font-size:.98rem;font-weight:700;letter-spacing:.1em;
+  }
+  .hand button:active{background:var(--ink)}
+  .hand button:disabled{background:#c3b8b2}
+  .hand .msg{margin:8px 0 0;font-size:.84rem;color:var(--ok);min-height:1.2em}
 
   details{background:#fff;border:1px solid var(--line);border-radius:8px;margin-top:14px}
   summary{padding:13px 15px;font-weight:600;font-size:.94rem;cursor:pointer}
@@ -126,15 +175,28 @@ window.SETUP = {
   <section class="say" id="askbox">
     <h2>何をつくりますか</h2>
     <p class="note">
-      作りたいものを、<strong>自分の言葉で</strong>書いてください。<br>
-      うまくいかなくてかまいません。というより、たぶんうまくいきません。それでいいです。
+      作りたいものを、<strong>次の四つが伝わるように</strong>書いてください。
+      相手はあなたの頭の中を見られません。書いていないことは、勝手に決められます。
     </p>
-    <textarea id="ask" placeholder="例：ボタンを押すと短い話が出てくるページ。&#10;（どんなふうに、何が、どう出るのか。書けば書くほど近づきます）"></textarea>
+    <div class="four">
+      <b>①　何を作るか</b>　——「〜するページを作ってください」と一文で<br>
+      <b>②　どう動くか</b>　——押したら、触ったら、何が起きるのか<br>
+      <b>③　何を入れるか</b>　——中身の数、長さ、書きぶり<br>
+      <b>④　どんな見た目か</b>　——色、大きさ、雰囲気
+    </div>
+    <textarea id="ask" placeholder="ボタンを押すとおみくじが出てくるページを作ってください。&#10;ボタンは画面の真ん中に大きく置いて、押すたびに違う結果が出るようにしてください。&#10;結果は十種類、どれも一行の短い言葉で、少し笑えるものにしてください。&#10;背景は和風の落ち着いた色で、文字は大きめにしてください。"></textarea>
     <div class="bar">
       <button class="go" id="make">つ く っ て も ら う</button>
       <button class="sub" id="reset">最初から</button>
     </div>
+
+    <div class="prog" id="prog">
+      <div class="track"><div class="fill"></div></div>
+      <div class="line"><span id="progText">考えています…</span><span class="sec" id="progSec">0秒</span></div>
+    </div>
+
     <div class="status" id="status"></div>
+    <div class="left" id="left"></div>
   </section>
 
   <!-- ===== プレビュー ===== -->
@@ -151,12 +213,20 @@ window.SETUP = {
     <h2>直したいところ</h2>
     <p class="note">
       <strong>どこが、どうなっていてほしいのか。</strong>
-      「もうちょっといい感じに」では何も変わりません。
+      「もうちょっといい感じに」では何も変わりません。四つのうち、足りなかったものを足してください。
     </p>
-    <textarea id="fix" placeholder="例：文字が小さくて読みにくいので大きくして。背景は夜みたいな色に。"></textarea>
+    <textarea id="fix" placeholder="結果の文字が小さくて読みにくいので、もっと大きくしてください。&#10;背景は夜の空のような濃い色に変えてください。"></textarea>
     <div class="bar">
       <button class="go" id="redo">直 し て も ら う</button>
     </div>
+  </section>
+
+  <!-- ===== 提出 ===== -->
+  <section class="hand" id="handbox" hidden>
+    <h2>提出する</h2>
+    <p>できたもののコードをコピーして、ロイロのカードに貼りつけて提出してください。</p>
+    <button id="copy">コ ー ド を コ ピ ー</button>
+    <p class="msg" id="copyMsg"></p>
   </section>
 
   <!-- ===== 履歴 ===== -->
@@ -187,7 +257,7 @@ window.SETUP = {
     <div class="inner">
       <ul class="trouble">
         <li><b>動くけれど、思っていたのと違う</b>
-          ここからが本番です。どこがどう違うのかを、具体的に言葉にしてください。それが今日の授業です。</li>
+          ここからが本番です。四つのうち、書かなかったものはどれですか。そこが勝手に決められたところです。</li>
         <li><b>「混んでいます」と出て止まる</b>
           みんなが一斉に頼むと順番待ちになります。そのまま待てば動きます。</li>
         <li><b>まっ白になった</b>
@@ -208,17 +278,17 @@ window.SETUP = {
         思いつかないときだけ。使わないほうが面白いものができます。</p>
       <div class="card">
         <h3>おみくじ</h3>
-        <p>ボタンを押すと、10個の短い文章の中から1つがランダムに出てくるページ。文章は考えて入れてください。</p>
+        <p>ボタンを押すと、10個の短い文章の中から1つがランダムに出てくるページを作ってください。文章は10種類、どれも一行で考えて入れてください。ボタンは画面の中央に大きく置いてください。</p>
         <button class="use">これで頼む</button>
       </div>
       <div class="card">
         <h3>診断</h3>
-        <p>3つの質問に答えると、4種類のうち1つの結果が出る診断ページ。質問と結果は考えて入れてください。</p>
+        <p>3つの質問に順番に答えると、4種類のうち1つの結果が出る診断ページを作ってください。質問と結果はあなたが考えて入れてください。結果には短い説明も付けてください。</p>
         <button class="use">これで頼む</button>
       </div>
       <div class="card">
         <h3>降ってくる詩</h3>
-        <p>画面をタップするたびに、詩が一行ずつ下に増えていくページ。詩は考えて入れてください。</p>
+        <p>画面をタップするたびに、詩が一行ずつ下に増えていくページを作ってください。詩は全部で8行、静かな雰囲気のものを考えて入れてください。文字はゆっくり現れるようにしてください。</p>
         <button class="use">これで頼む</button>
       </div>
     </div>
@@ -232,43 +302,115 @@ window.SETUP = {
 <script>
 (function(){
   "use strict";
-  var KEY_DRAFT='bh-draft', KEY_CODE='bh-code', KEY_HIST='bh-hist';
-  var $=function(id){return document.getElementById(id);};
+
+  var LIM = window.LIMITS || { perDay:30, cooldown:8, perMinute:4 };
+  var K = { draft:'bh-draft', code:'bh-code', hist:'bh-hist', use:'bh-use' };
+  var $ = function(id){ return document.getElementById(id); };
+
   var ask=$('ask'), fix=$('fix'), code=$('code'), view=$('view'),
-      statusEl=$('status'), stage=$('stage'), histEl=$('hist');
-  var current='';            // いま表示しているHTML
-  var history=[];            // 頼みごとの履歴
-  var busy=false;
-  var MODEL=null;
+      statusEl=$('status'), stage=$('stage'), histEl=$('hist'),
+      leftEl=$('left'), prog=$('prog'), progText=$('progText'), progSec=$('progSec');
+
+  var current='', history=[], busy=false, MODEL=null;
+  var cooldownUntil = 0, timer=null, tick=null;
 
   /* ---------- 保存 ---------- */
   function store(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
   function load(k){ try{ return localStorage.getItem(k)||''; }catch(e){ return ''; } }
 
-  try{
-    ask.value = load(KEY_DRAFT);
-    var c = load(KEY_CODE);
-    if (c){ current=c; code.value=c; render(c); }
-    var h = load(KEY_HIST);
-    if (h){ history = JSON.parse(h); drawHist(); }
-  }catch(e){}
+  /* ---------- 使用回数 ---------- */
+  function today(){ var d=new Date(); return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); }
+  function usage(){
+    var u;
+    try { u = JSON.parse(load(K.use)||'{}'); } catch(e){ u = {}; }
+    if (u.day !== today()) u = { day: today(), count: 0, times: [] };
+    if (!u.times) u.times = [];
+    return u;
+  }
+  function saveUsage(u){ store(K.use, JSON.stringify(u)); }
+  function remaining(){ return Math.max(0, LIM.perDay - usage().count); }
+  function recentCount(){
+    var now = Date.now();
+    return usage().times.filter(function(t){ return now - t < 60000; }).length;
+  }
+  function countUse(){
+    var u = usage();
+    u.count += 1;
+    u.times = u.times.filter(function(t){ return Date.now()-t < 60000; });
+    u.times.push(Date.now());
+    saveUsage(u);
+    drawLeft();
+  }
+  function drawLeft(){
+    var r = remaining();
+    leftEl.innerHTML = '今日つくれるのは、あと <b>' + r + '</b> 回です。';
+    leftEl.className = 'left' + (r <= 5 ? ' low' : '');
+  }
+
+  /* ---------- ボタンの状態 ---------- */
+  function setEnabled(on){
+    $('make').disabled = !on;
+    $('redo').disabled = !on;
+  }
+  function labels(makeText){
+    $('make').textContent = makeText || 'つ く っ て も ら う';
+  }
+  function startCooldown(){
+    cooldownUntil = Date.now() + LIM.cooldown*1000;
+    if (timer) clearInterval(timer);
+    timer = setInterval(function(){
+      var left = Math.ceil((cooldownUntil - Date.now())/1000);
+      if (left > 0){
+        setEnabled(false);
+        labels('あと ' + left + ' 秒');
+      } else {
+        clearInterval(timer); timer = null;
+        labels(null);
+        setEnabled(remaining() > 0);
+        if (remaining() <= 0) outOfQuota();
+      }
+    }, 200);
+  }
+  function outOfQuota(){
+    setEnabled(false);
+    labels('今日の分は終わりです');
+    say('今日つくれる回数を使いきりました。先生に声をかけてください。','err');
+  }
 
   /* ---------- 表示 ---------- */
-  function render(html){
-    view.srcdoc = html;
-    current = html;
-    store(KEY_CODE, html);
-    $('fixbox').hidden = false;
-    if(!document.body.classList.contains('zen')){
-      stage.scrollIntoView({behavior:'smooth', block:'start'});
-    }
-  }
   function say(msg, cls){
     statusEl.textContent = msg || '';
     statusEl.className = 'status' + (cls ? ' '+cls : '');
   }
+  function showProgress(on){
+    prog.className = 'prog' + (on ? ' on' : '');
+    if (tick){ clearInterval(tick); tick=null; }
+    if (!on) return;
+    var t0 = Date.now();
+    progText.textContent = '考えています…';
+    progSec.textContent = '0秒';
+    tick = setInterval(function(){
+      var s = Math.floor((Date.now()-t0)/1000);
+      progSec.textContent = s + '秒';
+      progText.textContent =
+        s < 4  ? '考えています…' :
+        s < 12 ? '書いています…' :
+        s < 25 ? '仕上げています…' :
+        s < 45 ? 'もう少しです…' : 'まだ動いています。待ってください…';
+    }, 250);
+  }
+  function render(html){
+    view.srcdoc = html;
+    current = html;
+    store(K.code, html);
+    $('fixbox').hidden = false;
+    $('handbox').hidden = false;
+    if(!document.body.classList.contains('zen')){
+      stage.scrollIntoView({behavior:'smooth', block:'start'});
+    }
+  }
   function drawHist(){
-    if(!history.length){ return; }
+    if(!history.length) return;
     $('histbox').hidden = false;
     histEl.innerHTML = '';
     history.forEach(function(h){
@@ -282,7 +424,7 @@ window.SETUP = {
   }
   function remember(text, kind){
     history.push({text:text, kind:kind});
-    store(KEY_HIST, JSON.stringify(history));
+    store(K.hist, JSON.stringify(history));
     drawHist();
   }
 
@@ -294,8 +436,8 @@ window.SETUP = {
     '<!doctype html> から始め、CSSは<style>、JavaScriptは<script>として同じファイルに含めること。',
     '外部のファイルやライブラリは読み込まないこと。画像が必要なら絵文字や図形で代用すること。',
     '表示される文言は日本語にすること。',
-    'スマートフォンやタブレットの画面でも読めるよう、文字は十分な大きさにすること。',
-    '指示があいまいな部分は、勝手に質問せず、自然な形で補って作ること。'
+    'タブレットの画面でも読めるよう、文字は十分な大きさにすること。',
+    '指示があいまいな部分は、質問を返さず、自然な形で補って作りきること。'
   ].join('\n');
 
   function strip(t){
@@ -306,28 +448,22 @@ window.SETUP = {
     if (i > 0) t = t.slice(i);
     return t.trim();
   }
-
   function sleep(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
 
   function pickModel(list){
     var ok = list.filter(function(m){
       var n=(m.name||'').replace('models/','');
-      var meth=m.supportedGenerationMethods||m.supportedActions||[];
+      var meth=m.supportedGenerationMethods||[];
       if (meth.indexOf('generateContent') < 0) return false;
-      if (/embed|aqa|vision|image|tts|audio|video|live|learnlm/i.test(n)) return false;
-      return true;
+      return !/embed|aqa|vision|image|tts|audio|video|live|learnlm|gemma|omni|transcribe|robotics|computer-use|deep-research|antigravity|nano-banana|lyria/i.test(n);
     }).map(function(m){ return m.name.replace('models/',''); });
-
-    var order = [/flash-lite/i, /flash/i, /./];
-    for (var i=0;i<order.length;i++){
-      var hit = ok.filter(function(n){ return order[i].test(n) && !/preview|exp/i.test(n); });
-      if (hit.length) return hit[0];
-      hit = ok.filter(function(n){ return order[i].test(n); });
-      if (hit.length) return hit[0];
-    }
-    return null;
+    var stable = ok.filter(function(n){ return !/preview|exp/i.test(n); });
+    var pool = stable.length ? stable : ok;
+    return pool.filter(function(n){ return /flash-lite/i.test(n); })[0]
+        || pool.filter(function(n){ return /lite/i.test(n); })[0]
+        || pool.filter(function(n){ return /flash/i.test(n); })[0]
+        || pool[0] || null;
   }
-
   async function ensureModel(key){
     if (MODEL) return MODEL;
     if (window.SETUP.model){ MODEL = window.SETUP.model; return MODEL; }
@@ -341,7 +477,6 @@ window.SETUP = {
 
   async function once(userText){
     var proxy = (window.SETUP.proxyUrl||'').trim().replace(/\/$/,'');
-
     if (proxy){
       var pr = await fetch(proxy, {
         method:'POST', headers:{'Content-Type':'application/json'},
@@ -356,7 +491,6 @@ window.SETUP = {
 
     var key = (window.SETUP.apiKey||'').trim();
     if (!key) throw new Error('NOKEY');
-
     var model = await ensureModel(key);
     var res = await fetch(
       'https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent?key='+encodeURIComponent(key),
@@ -382,7 +516,7 @@ window.SETUP = {
 
   async function callAI(userText){
     for (var attempt=0; attempt<6; attempt++){
-      if (attempt) say('混んでいます。順番待ちです…（'+attempt+'回目）','work');
+      if (attempt) progText.textContent = '混んでいます。順番待ちです…';
       var r = await once(userText);
       if (r.done) return r.html;
       await sleep(2500 + attempt*2500 + Math.random()*1500);
@@ -390,14 +524,25 @@ window.SETUP = {
     throw new Error('混み合っています。少し待ってから、もう一度押してください。');
   }
 
+  /* ---------- 実行 ---------- */
   async function go(prompt, kind){
     if (busy) return;
+    if (Date.now() < cooldownUntil) return;
+
     var text = prompt.trim();
     if (!text){ say('何をつくりたいか、書いてください。','err'); return; }
 
+    if (remaining() <= 0){ outOfQuota(); return; }
+    if (recentCount() >= LIM.perMinute){
+      say('少し急ぎすぎです。1分ほど待ってから、もう一度押してください。','err');
+      startCooldown();
+      return;
+    }
+
     busy = true;
-    $('make').disabled = true; $('redo').disabled = true;
-    say(kind==='fix' ? '直しています…' : 'つくっています…','work');
+    setEnabled(false);
+    say('');
+    showProgress(true);
 
     var sent = (kind==='fix')
       ? '次のHTMLを、後の指示のとおりに直してください。直した後の完全なHTMLだけを出力してください。\n\n----- いまのHTML -----\n'
@@ -406,45 +551,77 @@ window.SETUP = {
 
     try{
       var html = await callAI(sent);
+      countUse();
       render(html);
       code.value = html;
       remember(text, kind);
-      if (kind==='fix'){ fix.value=''; } else { ask.value=text; store(KEY_DRAFT,text); }
+      if (kind==='fix'){ fix.value=''; } else { ask.value=text; store(K.draft,text); }
       say('できました。','ok');
     }catch(e){
       if (e.message==='NOKEY'){
         say('このページではAIを直接呼べません。下の「コードを貼る」を使ってください。','err');
         $('pastebox').open = true;
-        $('pastebox').scrollIntoView({behavior:'smooth'});
       } else {
         say(e.message,'err');
       }
     }
+    showProgress(false);
     busy = false;
-    $('make').disabled = false; $('redo').disabled = false;
+    startCooldown();
+  }
+
+  /* ---------- コピー ---------- */
+  function copyText(text, done, fail){
+    if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext){
+      navigator.clipboard.writeText(text).then(done, function(){ legacy(); });
+    } else { legacy(); }
+    function legacy(){
+      var t=document.createElement('textarea');
+      t.value=text;
+      t.style.position='fixed'; t.style.top='0'; t.style.opacity='0';
+      t.setAttribute('readonly','');
+      document.body.appendChild(t);
+      t.select(); t.setSelectionRange(0, t.value.length);
+      var ok=false;
+      try { ok = document.execCommand('copy'); } catch(e){}
+      document.body.removeChild(t);
+      ok ? done() : fail();
+    }
   }
 
   /* ---------- 操作 ---------- */
   $('make').addEventListener('click', function(){ go(ask.value,'new'); });
   $('redo').addEventListener('click', function(){ go(fix.value,'fix'); });
+  ask.addEventListener('input', function(){ store(K.draft, ask.value); });
 
-  ask.addEventListener('input', function(){ store(KEY_DRAFT, ask.value); });
+  $('copy').addEventListener('click', function(){
+    var msg = $('copyMsg');
+    if (!current){ msg.textContent = 'まだ何もできていません。'; return; }
+    var btn = this;
+    btn.disabled = true;
+    copyText(current, function(){
+      msg.textContent = 'コピーしました。ロイロのカードに貼りつけてください。';
+      btn.disabled = false;
+    }, function(){
+      msg.textContent = 'コピーできませんでした。下の「コードを貼る」を開いて、中の文字を選んでコピーしてください。';
+      $('pastebox').open = true;
+      btn.disabled = false;
+    });
+  });
 
   $('run').addEventListener('click', function(){
     var v = code.value.trim();
-    if (!v){ return; }
-    render(v);
+    if (v) render(v);
   });
-  code.addEventListener('input', function(){ store(KEY_CODE, code.value); });
+  code.addEventListener('input', function(){ store(K.code, code.value); });
 
   $('reset').addEventListener('click', function(){
-    if (!confirm('いままで作ったものを消して、最初からやり直しますか。')) return;
+    if (!confirm('いままで作ったものを消して、最初からやり直しますか。\n（つくれる回数は戻りません）')) return;
     ask.value=''; fix.value=''; code.value=''; current='';
     view.srcdoc=''; history=[]; histEl.innerHTML='';
-    $('histbox').hidden = true; $('fixbox').hidden = true;
-    store(KEY_DRAFT,''); store(KEY_CODE,''); store(KEY_HIST,'[]');
-    say('');
-    ask.focus();
+    $('histbox').hidden = true; $('fixbox').hidden = true; $('handbox').hidden = true;
+    store(K.draft,''); store(K.code,''); store(K.hist,'[]');
+    say(''); ask.focus();
   });
 
   $('zen').addEventListener('click', function(){
@@ -456,13 +633,44 @@ window.SETUP = {
   Array.prototype.forEach.call(document.querySelectorAll('.use'), function(btn){
     btn.addEventListener('click', function(){
       ask.value = btn.previousElementSibling.textContent.trim();
-      store(KEY_DRAFT, ask.value);
+      store(K.draft, ask.value);
       ask.scrollIntoView({behavior:'smooth', block:'center'});
       ask.focus();
     });
   });
 
-  /* キーが無ければ、頼む欄の案内を差し替える */
+  /* 先生用：残り回数を2秒長押しすると戻せます */
+  (function(){
+    var t=null;
+    var start=function(){ t=setTimeout(function(){
+      if (confirm('つくれる回数を元に戻しますか。（先生用）')){
+        saveUsage({day:today(), count:0, times:[]});
+        cooldownUntil = 0;
+        if (timer){ clearInterval(timer); timer=null; }
+        labels(null); setEnabled(true); drawLeft(); say('回数を戻しました。','ok');
+      }
+    }, 2000); };
+    var stop=function(){ if(t){ clearTimeout(t); t=null; } };
+    leftEl.addEventListener('touchstart', start, {passive:true});
+    leftEl.addEventListener('touchend', stop);
+    leftEl.addEventListener('touchcancel', stop);
+    leftEl.addEventListener('mousedown', start);
+    leftEl.addEventListener('mouseup', stop);
+    leftEl.addEventListener('mouseleave', stop);
+  })();
+
+  /* ---------- 起動 ---------- */
+  try{
+    ask.value = load(K.draft);
+    var c = load(K.code);
+    if (c){ current=c; code.value=c; view.srcdoc=c; $('fixbox').hidden=false; $('handbox').hidden=false; }
+    var h = load(K.hist);
+    if (h){ history = JSON.parse(h); drawHist(); }
+  }catch(e){}
+
+  drawLeft();
+  if (remaining() <= 0) outOfQuota();
+
   if (!(window.SETUP.proxyUrl||'').trim() && !(window.SETUP.apiKey||'').trim()){
     $('askbox').querySelector('.note').innerHTML =
       'このページではAIを直接呼べない設定です。<br>下の<strong>「コードを貼る」</strong>から進んでください。';
